@@ -2,11 +2,23 @@
 -- Aplicar con `supabase db push`, o pegándola en el SQL Editor del proyecto.
 --
 -- MODELO DE ACCESO
--- Las dos tablas quedan con RLS activo y SIN políticas, y sin permisos para los
--- roles anon/authenticated: la clave publishable no puede leer ni escribir nada
--- directamente. Todo el acceso pasa por las funciones SECURITY DEFINER del final,
--- que exigen el código del local. Ese código es el secreto compartido entre los
--- dispositivos de un mismo local: genérese largo y aleatorio y no se publique.
+-- La extensión usa únicamente la clave anon / publishable, que es pública por
+-- diseño: va dentro de la extensión y cualquiera puede extraerla. La service key
+-- no interviene en ningún momento.
+--
+-- Por eso la clave anon, por sí sola, no sirve para nada:
+--   · Las dos tablas tienen RLS activo y SIN políticas, y se les revocan los
+--     permisos de anon/authenticated: no se pueden leer ni escribir directamente.
+--   · El acceso pasa por funciones SECURITY DEFINER que exigen el código del
+--     local. Ese código es el secreto compartido entre los dispositivos de un
+--     mismo local: genérese largo y aleatorio y no se publique.
+--   · Dar de alta un local NO está al alcance de la API. pc_create_venue queda
+--     revocada para anon, así que sólo se ejecuta desde el SQL Editor del
+--     proyecto. Sin eso, cualquiera con la clave podría crear locales y llenar
+--     la base de datos de filas.
+--
+-- ALTA DE UN LOCAL (una vez por local, en el SQL Editor, tras esta migración):
+--   select public.pc_create_venue('TIENDA-7F3A2B', 'Tienda Centro', 500);
 
 -- ---------------------------------------------------------------------- tablas
 
@@ -46,31 +58,44 @@ revoke all on public.pc_events from anon, authenticated;
 
 -- -------------------------------------------------------------------- funciones
 
--- Localiza el local por código y lo da de alta la primera vez.
--- p_since: registro más antiguo del mismo envío. Al crear el local la jornada
--- arranca ahí y no en now(), para no descartar una cola acumulada sin conexión.
--- Si el local ya existe, reset_at no se toca.
-create or replace function public.pc_venue(p_code text, p_name text default null,
-                                           p_capacity int default null,
-                                           p_since timestamptz default null)
+-- Da de alta un local. NO se concede a anon: se ejecuta una sola vez desde el
+-- SQL Editor del proyecto. Si el código ya existe, sólo actualiza nombre y objetivo.
+create or replace function public.pc_create_venue(p_code text, p_name text default null,
+                                                  p_capacity int default null)
 returns public.pc_venues
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   v      public.pc_venues;
+  v_code text := upper(btrim(coalesce(p_code, '')));
   v_name text := nullif(btrim(p_name), '');
 begin
-  if coalesce(btrim(p_code), '') = '' then
-    raise exception 'Falta el código del local';
+  if length(v_code) < 8 then
+    raise exception 'El código del local debe tener al menos 8 caracteres y ser aleatorio: es el secreto que protege el local';
   end if;
 
-  insert into public.pc_venues (code, name, capacity, reset_at)
-  values (upper(btrim(p_code)), coalesce(v_name, 'Mi local'), p_capacity,
-          least(now(), coalesce(p_since, now())))
+  insert into public.pc_venues (code, name, capacity)
+  values (v_code, coalesce(v_name, 'Mi local'), p_capacity)
   on conflict (code) do update
     set name     = coalesce(v_name, public.pc_venues.name),
         capacity = coalesce(p_capacity, public.pc_venues.capacity)
   returning * into v;
 
+  return v;
+end $$;
+
+-- Busca un local por código. Nunca lo crea.
+create or replace function public.pc_venue(p_code text)
+returns public.pc_venues
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v      public.pc_venues;
+  v_code text := upper(btrim(coalesce(p_code, '')));
+begin
+  select * into v from public.pc_venues where code = v_code;
+  if not found then
+    raise exception 'No existe ningún local con el código %. Créalo una vez desde el SQL Editor del proyecto: select public.pc_create_venue(''%'', ''Mi local'', null);',
+      v_code, v_code;
+  end if;
   return v;
 end $$;
 
@@ -80,10 +105,7 @@ returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare v public.pc_venues; result jsonb;
 begin
-  select * into v from public.pc_venues where code = upper(btrim(p_code));
-  if not found then
-    raise exception 'No existe ningún local con el código %', upper(btrim(p_code));
-  end if;
+  v := public.pc_venue(p_code);
 
   select jsonb_build_object(
     'venue_id',    v.id,
@@ -109,13 +131,23 @@ returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   v       public.pc_venues;
+  v_name  text := nullif(btrim(p_name), '');
   v_since timestamptz;
 begin
-  select min(to_timestamp((e ->> 'ts')::bigint / 1000.0))
-    into v_since
-    from jsonb_array_elements(coalesce(p_events, '[]'::jsonb)) as e;
+  if jsonb_array_length(coalesce(p_events, '[]'::jsonb)) > 1000 then
+    raise exception 'Demasiados registros en un solo envío (máximo 1000)';
+  end if;
 
-  v := public.pc_venue(p_code, p_name, p_capacity, v_since);
+  v := public.pc_venue(p_code);   -- exige que el local ya exista
+
+  -- El nombre y el objetivo sí se pueden ajustar desde la extensión: quien llega
+  -- hasta aquí ya conoce el código del local.
+  if v_name is not null or p_capacity is not null then
+    update public.pc_venues
+       set name = coalesce(v_name, name), capacity = coalesce(p_capacity, capacity)
+     where id = v.id
+    returning * into v;
+  end if;
 
   insert into public.pc_events (venue_id, device_id, client_id, occurred_at)
   select v.id,
@@ -123,7 +155,19 @@ begin
          (e ->> 'id')::uuid,
          to_timestamp((e ->> 'ts')::bigint / 1000.0)
   from jsonb_array_elements(coalesce(p_events, '[]'::jsonb)) as e
+  -- Se descarta lo absurdo: nada del futuro ni de hace meses.
+  where to_timestamp((e ->> 'ts')::bigint / 1000.0)
+        between now() - interval '90 days' and now() + interval '1 day'
   on conflict (client_id) do nothing;
+
+  -- Primer envío al local: la jornada arranca en el registro más antiguo de la
+  -- cola y no en el momento del alta, para no descartar lo contado sin conexión.
+  select min(occurred_at) into v_since from public.pc_events where venue_id = v.id;
+  if v_since is not null and v_since < v.reset_at
+     and not exists (select 1 from public.pc_events
+                     where venue_id = v.id and occurred_at >= v.reset_at) then
+    update public.pc_venues set reset_at = v_since where id = v.id returning * into v;
+  end if;
 
   return public.pc_state(v.code);
 end $$;
@@ -134,10 +178,7 @@ returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare v public.pc_venues;
 begin
-  select * into v from public.pc_venues where code = upper(btrim(p_code));
-  if not found then
-    raise exception 'No existe ningún local con el código %', upper(btrim(p_code));
-  end if;
+  v := public.pc_venue(p_code);
 
   delete from public.pc_events
   where id = (
@@ -156,13 +197,8 @@ returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare v public.pc_venues;
 begin
-  update public.pc_venues set reset_at = now()
-  where code = upper(btrim(p_code))
-  returning * into v;
-
-  if not found then
-    raise exception 'No existe ningún local con el código %', upper(btrim(p_code));
-  end if;
+  v := public.pc_venue(p_code);
+  update public.pc_venues set reset_at = now() where id = v.id returning * into v;
 
   return public.pc_state(v.code);
 end $$;
@@ -181,8 +217,10 @@ $$;
 
 -- ---------------------------------------------------------------------- permisos
 
--- pc_venue es un ayudante interno: sólo lo invocan las funciones de arriba.
-revoke all on function public.pc_venue(text, text, int, timestamptz) from public, anon, authenticated;
+-- Ayudantes internos, fuera del alcance de la API. pc_create_venue es la pieza
+-- clave: sin ella, la clave anon permitiría crear locales y llenar la base de datos.
+revoke all on function public.pc_venue(text)                    from public, anon, authenticated;
+revoke all on function public.pc_create_venue(text, text, int)  from public, anon, authenticated;
 
 grant execute on function public.pc_state(text)                        to anon, authenticated;
 grant execute on function public.pc_push(text, text, jsonb, text, int) to anon, authenticated;

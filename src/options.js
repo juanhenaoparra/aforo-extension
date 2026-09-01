@@ -51,8 +51,19 @@ $('test').addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ type: 'sync' });
     say(`Conectado. Local «${remote.name ?? config.venueName}» con ${remote.count ?? 0} persona(s) contadas.`);
   } catch (err) {
-    say(`No se pudo conectar.\n\n${err.message || err}\n\n` +
-        '¿Has aplicado la migración de supabase/migrations/ en el proyecto?', 'bad');
+    const text = String(err.message || err);
+    if (/No existe ning/i.test(text)) {
+      const code = form.venueCode;
+      say('El proyecto responde, pero ese local todavía no está dado de alta.\n\n' +
+          'Los locales se crean desde el SQL Editor a propósito: así la clave anon, ' +
+          'que va dentro de la extensión y es pública, no permite crear locales a nadie.\n\n' +
+          'Ejecuta esto una vez en el SQL Editor del proyecto:\n\n' +
+          `select public.pc_create_venue('${code}', '${form.venueName}', ` +
+          `${form.capacity || 'null'});`, 'bad');
+    } else {
+      say(`No se pudo conectar.\n\n${text}\n\n` +
+          '¿Has aplicado la migración de supabase/migrations/ en el proyecto?', 'bad');
+    }
   }
 });
 

@@ -162,7 +162,9 @@ async function flushNow() {
   const config = await getConfig();
   if (!isCloudEnabled(config)) return readState();
 
-  const sending = await getQueue();
+  // pc_push rechaza envíos de más de 1000 registros; tras un apagón largo la cola
+  // se vacía en varias tandas (el resto queda pendiente para la siguiente vuelta).
+  const sending = (await getQueue()).slice(0, 500);
   try {
     const remote = sending.length
       ? await rpc(config, 'pc_push', {

@@ -40,23 +40,49 @@ Sin esto la extensión funciona igual, pero el contador vive sólo en ese navega
 
 1. Aplica la migración `supabase/migrations/20260901120000_aforo_init.sql` al proyecto,
    con `supabase db push` o pegándola en el **SQL Editor**.
-2. Abre los **ajustes** de la extensión (⚙) y rellena:
+2. Da de alta el local, una sola vez, en el mismo **SQL Editor**:
+
+   ```sql
+   select public.pc_create_venue('TIENDA-7F3A2B', 'Tienda Centro', 500);
+   ```
+
+   Usa un código largo y aleatorio: el botón *Generar código nuevo* de los ajustes
+   te da uno. Este paso es a propósito el único que no se puede hacer desde la
+   extensión — ver más abajo.
+3. Abre los **ajustes** de la extensión (⚙) y rellena:
    - **URL del proyecto** — `https://xxxxxxxx.supabase.co`
    - **Clave publishable / anon** — la de *Project Settings → API Keys*
    - **Código del local** — pulsa *Generar código nuevo*
-3. **Probar conexión**. Da de alta el local y confirma que responde.
-4. En los demás dispositivos, repite con **exactamente el mismo código de local**.
+4. **Probar conexión**. Confirma que el proyecto responde y que el local existe;
+   si no existe, la propia pantalla te da la línea SQL exacta que falta ejecutar.
+5. En los demás dispositivos, repite el paso 3 con **exactamente el mismo código**.
 
 Los dispositivos se sincronizan cada 4 segundos mientras la ventana está a la vista,
 y cada minuto en segundo plano.
 
 ### Sobre la seguridad
 
-Las dos tablas quedan con RLS activo y **sin políticas**, y sin permisos para los roles
-`anon` / `authenticated`: la clave publishable no permite leer ni escribir directamente.
-Todo pasa por funciones `SECURITY DEFINER` que exigen el código del local, que actúa
-como secreto compartido. Quien tenga la clave *y* el código puede sumar en ese local,
-así que genera un código largo y aleatorio y no lo publiques. Si necesitas garantías
+La extensión usa **únicamente la clave anon / publishable**. La service key no aparece
+en el código, ni en la configuración, ni en la migración: nunca sale del panel de
+Supabase. Eso importa porque la clave que va dentro de una extensión es pública de
+hecho — cualquiera que la instale puede extraerla.
+
+El diseño parte de ahí: **la clave anon, por sí sola, no sirve para nada**.
+
+| Con la clave anon y sin el código del local | |
+|---|---|
+| Leer las tablas `pc_venues` / `pc_events` | ❌ RLS activo, sin políticas y sin permisos |
+| Escribir en las tablas directamente | ❌ |
+| Leer o escribir el contador de un local | ❌ hace falta el código |
+| Dar de alta locales o llenar la base de datos | ❌ `pc_create_venue` está revocada para `anon` |
+
+Por eso los locales se crean desde el SQL Editor y no desde la extensión: si `pc_push`
+diera de alta el local que no existe — como hacía en la primera versión — cualquiera
+con la clave podría crear locales sin límite e inflar la base de datos. Además `pc_push`
+rechaza envíos de más de 1000 registros e ignora los que traen fecha absurda.
+
+Lo que sí puede hacer quien consiga la clave **y** el código es sumar en ese local, así
+que el código es una contraseña: largo, aleatorio y no publicado. Si necesitas garantías
 más fuertes (cada empleado con su cuenta, auditoría por persona), el paso siguiente es
 Supabase Auth con políticas RLS por usuario.
 
@@ -71,7 +97,7 @@ src/popup.html/.js      Panel compacto al pulsar el icono
 src/floating.html/.js   Ventana flotante + Document Picture-in-Picture
 src/options.html/.js    Ajustes, prueba de conexión y exportación CSV
 src/background.js       Service worker: atajos, ventana flotante, sincronización
-supabase/migrations/    Migración con tablas, RLS y funciones
+supabase/migrations/    Migración con tablas, RLS y funciones de acceso
 test/store.test.mjs     Pruebas del núcleo (`npm test`)
 ```
 
