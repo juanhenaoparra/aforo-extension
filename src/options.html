@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Ajustes · Aforo</title>
+  <link rel="stylesheet" href="panel.css">
+  <style>
+    body { overflow: auto; user-select: text; }
+    .wrap { margin: 0 auto; max-width: 640px; padding: 32px 24px 64px; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    h2 { border-top: 1px solid var(--line); font-size: 13px; letter-spacing: .08em;
+         margin: 28px 0 14px; padding-top: 18px; text-transform: uppercase; color: var(--muted); }
+    p.lead { color: var(--muted); margin-bottom: 8px; }
+    label { display: block; margin-bottom: 14px; }
+    label > span { color: var(--muted); display: block; font-size: 12px; margin-bottom: 5px; }
+    input[type=text], input[type=number], input[type=password] {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+      color: var(--text); font: inherit; padding: 9px 11px; width: 100%;
+    }
+    input:focus { border-color: var(--accent); outline: none; }
+    .row { display: flex; gap: 12px; }
+    .row > label { flex: 1; }
+    .check { align-items: center; display: flex; gap: 8px; }
+    .check input { accent-color: var(--accent); }
+    .check span { margin: 0; }
+    button.primary {
+      background: var(--accent); border: 0; border-radius: 8px; color: #04211d;
+      cursor: pointer; font: inherit; font-weight: 600; padding: 10px 18px;
+    }
+    button.ghost {
+      background: transparent; border: 1px solid var(--line); border-radius: 8px;
+      color: var(--text); cursor: pointer; font: inherit; padding: 10px 16px;
+    }
+    button.ghost:hover { border-color: var(--accent); }
+    .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+    .msg { border-radius: 8px; font-size: 13px; margin-top: 14px; padding: 10px 12px; }
+    .msg.ok  { background: var(--in-dim);  border: 1px solid var(--in); }
+    .msg.bad { background: var(--out-dim); border: 1px solid var(--out); white-space: pre-wrap; }
+    code { background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Aforo — ajustes</h1>
+    <p class="lead">Sin nube el contador funciona igual, pero sólo en este navegador.</p>
+
+    <h2>Local</h2>
+    <label><span>Nombre del local</span><input type="text" id="venueName" placeholder="Tienda Centro"></label>
+    <div class="row">
+      <label><span>Aforo máximo (0 = sin límite)</span><input type="number" id="capacity" min="0" step="1"></label>
+      <label><span>Código del local (compartido entre dispositivos)</span>
+        <input type="text" id="venueCode" placeholder="TIENDA-7F3A2B" autocomplete="off"></label>
+    </div>
+    <div class="buttons"><button class="ghost" id="genCode">Generar código nuevo</button></div>
+
+    <h2>Sincronización en la nube (Supabase)</h2>
+    <p class="lead">Pega la URL y la clave <em>publishable</em> del proyecto. Todos los
+      dispositivos con el mismo código de local comparten el contador.</p>
+    <label><span>URL del proyecto</span>
+      <input type="text" id="supabaseUrl" placeholder="https://xxxxxxxx.supabase.co" autocomplete="off"></label>
+    <label><span>Clave publishable / anon</span>
+      <input type="password" id="supabaseKey" placeholder="sb_publishable_… o eyJhbGci…" autocomplete="off"></label>
+
+    <h2>Preferencias</h2>
+    <label class="check"><input type="checkbox" id="soundOn"><span>Sonido al registrar entrada o salida</span></label>
+
+    <div class="buttons">
+      <button class="primary" id="save">Guardar</button>
+      <button class="ghost" id="test">Probar conexión</button>
+      <button class="ghost" id="export">Descargar historial (CSV)</button>
+    </div>
+    <div id="msg"></div>
+  </div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

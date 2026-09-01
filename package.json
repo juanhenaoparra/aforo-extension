@@ -1,0 +1,11 @@
+{
+  "name": "aforo-extension",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Extensión de Chrome para contar personas en un local físico, con ventana flotante y sincronización en la nube.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/store.test.mjs",
+    "zip": "rm -f aforo-extension.zip && zip -r aforo-extension.zip manifest.json src icons -x '*.DS_Store'"
+  }
+}
