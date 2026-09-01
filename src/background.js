@@ -39,8 +39,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
-  if (command === 'count-in') await store.record('in');
-  else if (command === 'count-out') await store.record('out');
+  if (command === 'count-in') await store.record();
   else if (command === 'open-floating') await openFloating();
 });
 
@@ -48,7 +47,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
   (async () => {
     switch (msg?.type) {
       case 'open-floating': await openFloating(); respond({ ok: true }); break;
-      case 'record':        respond(await store.record(msg.kind)); break;
+      case 'record':        respond(await store.record()); break;
       case 'undo':          respond(await store.undo()); break;
       case 'reset':         respond(await store.resetCounter()); break;
       case 'sync':          respond(await store.pull()); break;

@@ -129,17 +129,11 @@ body {
 }
 .gauge.full > i { background: var(--out); }
 
-/* ---------------------------------------------------------------- botones */
-
-.actions {
-  display: grid;
-  flex: 1;
-  gap: 10px;
-  grid-template-columns: 1fr 1fr;
-  min-height: 96px;
-}
+/* ---------------------------------------------------------------- botón */
 
 .tally {
+  flex: 1;
+  min-height: 104px;
   align-items: center;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -157,49 +151,15 @@ body {
 .tally:active { transform: scale(.97); }
 .tally:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.tally .sign { font-size: 34px; font-weight: 300; line-height: 1; }
+.tally .sign { font-size: 40px; font-weight: 300; line-height: 1; }
 .tally .word { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
 
 .tally.in       { background: var(--in-dim);  border-color: var(--in); }
 .tally.in .sign { color: var(--in); }
 .tally.in:hover { background: #075e4a; }
 
-.tally.out       { background: var(--out-dim);  border-color: var(--out); }
-.tally.out .sign { color: var(--out); }
-.tally.out:hover { background: #641024; }
-
 .tally.flash { animation: flash .3s ease; }
 @keyframes flash { 0% { filter: brightness(1.9); } 100% { filter: none; } }
-
-/* ---------------------------------------------------------------- métricas */
-
-.stats {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(3, 1fr);
-}
-
-.stat {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 7px 8px;
-  text-align: center;
-}
-
-.stat b {
-  display: block;
-  font-size: 17px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.stat span {
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
 
 /* ---------------------------------------------------------------- pie */
 
@@ -241,4 +201,4 @@ body {
 
 body.compact .panel { min-height: 0; }
 body.compact .score-value { font-size: 52px; }
-body.compact .actions { min-height: 84px; }
+body.compact .tally { min-height: 88px; }

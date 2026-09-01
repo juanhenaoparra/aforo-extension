@@ -2,7 +2,7 @@
 // Lo usan el popup, la ventana flotante y el service worker.
 //
 // Modelo: `base` es el último snapshot autoritativo del servidor y `queue` son los
-// eventos que aún no ha confirmado. Lo que se muestra es siempre base + queue, así
+// registros que aún no ha confirmado. Lo que se muestra es siempre base + queue, así
 // que el clic se ve al instante aunque no haya red. Sin nube configurada, `queue`
 // es directamente el libro mayor local de la jornada.
 
@@ -13,15 +13,12 @@ export const DEFAULT_CONFIG = {
   supabaseKey: '',
   venueCode: '',
   venueName: 'Mi local',
-  capacity: 0,        // 0 = sin límite de aforo
+  capacity: 0,        // objetivo de personas del día; 0 = sin objetivo
   deviceId: '',
   soundOn: true,
 };
 
-const EMPTY_BASE = {
-  occupancy: 0, entries: 0, exits: 0, peak: 0,
-  since: null, venueId: null, syncedAt: null,
-};
+const EMPTY_BASE = { count: 0, since: null, venueId: null, syncedAt: null };
 
 const area = chrome.storage.local;
 const get = async (key, fallback) => (await area.get(key))[key] ?? fallback;
@@ -50,17 +47,9 @@ export async function setConfig(patch) {
 
 export const isCloudEnabled = (c) => Boolean(c.supabaseUrl && c.supabaseKey && c.venueCode);
 
-/** Pliega los eventos pendientes sobre el snapshot: eso es lo que ve el usuario. */
+/** Pliega los registros pendientes sobre el snapshot: eso es lo que ve el usuario. */
 export function fold(base, queue) {
-  const s = { ...base, pending: queue.length };
-  for (const ev of queue) {
-    if (ev.kind === 'in') { s.occupancy += 1; s.entries += 1; }
-    else if (ev.kind === 'out') { s.occupancy -= 1; s.exits += 1; }
-    s.occupancy = Math.max(0, s.occupancy);
-    s.peak = Math.max(s.peak, s.occupancy);
-  }
-  s.occupancy = Math.max(0, s.occupancy);
-  return s;
+  return { ...base, count: base.count + queue.length, pending: queue.length };
 }
 
 /** Estado visible ahora mismo. */
@@ -80,12 +69,12 @@ export async function readState() {
   };
 }
 
-/** Registra un evento: se aplica en local al instante y se envía en segundo plano. */
-export const record = (kind) => withLock(() => recordNow(kind));
+/** Cuenta una persona: se aplica en local al instante y se envía en segundo plano. */
+export const record = () => withLock(recordNow);
 
-async function recordNow(kind) {
+async function recordNow() {
   const queue = await getQueue();
-  queue.push({ id: crypto.randomUUID(), kind, ts: Date.now() });
+  queue.push({ id: crypto.randomUUID(), ts: Date.now() });
   await area.set({ [KEYS.queue]: queue });
   await refreshBadge();
 
@@ -157,10 +146,7 @@ async function rpc(config, fn, body) {
 
 function toBase(remote) {
   return {
-    occupancy: Math.max(0, remote.occupancy ?? 0),
-    entries: remote.entries ?? 0,
-    exits: remote.exits ?? 0,
-    peak: remote.peak ?? 0,
+    count: Math.max(0, remote.count ?? 0),
     since: remote.since ? Date.parse(remote.since) : null,
     venueId: remote.venue_id ?? null,
     syncedAt: Date.now(),
@@ -227,8 +213,8 @@ export async function testConnection(config) {
 export async function refreshBadge() {
   try {
     const s = await readState();
-    const full = s.config.capacity > 0 && s.occupancy >= s.config.capacity;
-    await chrome.action.setBadgeText({ text: String(s.occupancy) });
+    const full = s.config.capacity > 0 && s.count >= s.config.capacity;
+    await chrome.action.setBadgeText({ text: String(s.count) });
     await chrome.action.setBadgeBackgroundColor({ color: full ? '#dc2626' : '#0f766e' });
   } catch { /* chrome.action no existe en todos los contextos */ }
 }

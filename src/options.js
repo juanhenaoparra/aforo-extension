@@ -49,10 +49,10 @@ $('test').addEventListener('click', async () => {
     const config = await store.getConfig();
     const remote = await store.testConnection(config);
     await chrome.runtime.sendMessage({ type: 'sync' });
-    say(`Conectado. Local «${remote.name ?? config.venueName}» con ${remote.occupancy ?? 0} persona(s) dentro.`);
+    say(`Conectado. Local «${remote.name ?? config.venueName}» con ${remote.count ?? 0} persona(s) contadas.`);
   } catch (err) {
     say(`No se pudo conectar.\n\n${err.message || err}\n\n` +
-        '¿Has ejecutado el SQL de sql/schema.sql en el proyecto?', 'bad');
+        '¿Has aplicado la migración de supabase/migrations/ en el proyecto?', 'bad');
   }
 });
 
@@ -60,8 +60,8 @@ $('export').addEventListener('click', async () => {
   try {
     const rows = await store.history(30);
     if (!rows?.length) return say('No hay historial que exportar todavía.', 'bad');
-    const csv = ['hora,entradas,salidas,aforo_final']
-      .concat(rows.map((r) => [r.hour, r.entries, r.exits, r.occupancy].join(',')))
+    const csv = ['hora,personas']
+      .concat(rows.map((r) => [r.hour, r.people].join(',')))
       .join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const a = document.createElement('a');

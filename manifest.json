@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Aforo — Contador de personas",
   "version": "1.0.0",
-  "description": "Cuenta entradas y salidas de personas en un local físico. Ventana flotante siempre encima, atajos de teclado y sincronización entre dispositivos.",
+  "description": "Cuenta personas en un local físico con un solo botón. Ventana flotante siempre encima, atajos de teclado y sincronización entre dispositivos.",
   "action": {
     "default_popup": "src/popup.html",
     "default_title": "Aforo",
@@ -24,20 +24,27 @@
     "type": "module"
   },
   "options_page": "src/options.html",
-  "permissions": ["storage", "alarms"],
-  "host_permissions": ["https://*.supabase.co/*"],
-  "optional_host_permissions": ["https://*/*"],
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://*.supabase.co/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
   "commands": {
     "count-in": {
-      "suggested_key": { "default": "Alt+Shift+Up" },
-      "description": "Registrar una entrada"
-    },
-    "count-out": {
-      "suggested_key": { "default": "Alt+Shift+Down" },
-      "description": "Registrar una salida"
+      "suggested_key": {
+        "default": "Alt+Shift+Up"
+      },
+      "description": "Contar una persona"
     },
     "open-floating": {
-      "suggested_key": { "default": "Alt+Shift+A" },
+      "suggested_key": {
+        "default": "Alt+Shift+A"
+      },
       "description": "Abrir la ventana flotante"
     }
   }

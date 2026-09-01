@@ -48,7 +48,7 @@
     <h2>Local</h2>
     <label><span>Nombre del local</span><input type="text" id="venueName" placeholder="Tienda Centro"></label>
     <div class="row">
-      <label><span>Aforo máximo (0 = sin límite)</span><input type="number" id="capacity" min="0" step="1"></label>
+      <label><span>Objetivo de personas (0 = sin objetivo)</span><input type="number" id="capacity" min="0" step="1"></label>
       <label><span>Código del local (compartido entre dispositivos)</span>
         <input type="text" id="venueCode" placeholder="TIENDA-7F3A2B" autocomplete="off"></label>
     </div>
@@ -63,7 +63,7 @@
       <input type="password" id="supabaseKey" placeholder="sb_publishable_… o eyJhbGci…" autocomplete="off"></label>
 
     <h2>Preferencias</h2>
-    <label class="check"><input type="checkbox" id="soundOn"><span>Sonido al registrar entrada o salida</span></label>
+    <label class="check"><input type="checkbox" id="soundOn"><span>Sonido al contar una persona</span></label>
 
     <div class="buttons">
       <button class="primary" id="save">Guardar</button>

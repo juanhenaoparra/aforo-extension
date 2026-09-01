@@ -25,17 +25,11 @@ globalThis.chrome = {
 };
 
 function state() {
-  const live = [...server.events.values()].filter((e) => e.ts >= server.resetAt)
-    .sort((a, b) => a.ts - b.ts);
-  let run = 0, peak = 0;
-  for (const e of live) { run += e.delta; peak = Math.max(peak, run); }
+  const live = [...server.events.values()].filter((e) => e.ts >= server.resetAt);
   return {
     venue_id: 'v1', code: 'TEST', name: 'Test', capacity: null,
     since: new Date(server.resetAt).toISOString(),
-    occupancy: Math.max(0, run),
-    entries: live.filter((e) => e.delta === 1).length,
-    exits: live.filter((e) => e.delta === -1).length,
-    peak,
+    count: live.length,
   };
 }
 
@@ -47,7 +41,7 @@ globalThis.fetch = async (url, init) => {
 
   if (fn === 'pc_push') {
     for (const e of body.p_events ?? []) {                       // idempotente por id
-      if (!server.events.has(e.id)) server.events.set(e.id, { delta: e.kind === 'in' ? 1 : -1, ts: e.ts });
+      if (!server.events.has(e.id)) server.events.set(e.id, { ts: e.ts });
     }
   } else if (fn === 'pc_reset') {
     server.resetAt = Date.now();
@@ -70,48 +64,43 @@ const reset = async (cloud) => {
 };
 
 // -------------------------------------------------------------------- pruebas
-test('modo local: cuenta, no baja de cero y guarda el pico', async () => {
+test('modo local: cuenta sin tocar la red', async () => {
   await reset(false);
-  for (const k of ['in', 'in', 'in', 'out']) await store.record(k);
-  let s = await store.readState();
-  assert.equal(s.occupancy, 2);
-  assert.equal(s.entries, 3);
-  assert.equal(s.exits, 1);
-  assert.equal(s.peak, 3);
+  for (let i = 0; i < 3; i++) await store.record();
+  const s = await store.readState();
+  assert.equal(s.count, 3);
   assert.equal(s.connection, 'local');
-
-  for (let i = 0; i < 5; i++) await store.record('out');
-  s = await store.readState();
-  assert.equal(s.occupancy, 0, 'el aforo nunca es negativo');
   assert.equal(calls.length, 0, 'sin nube no se hace ninguna petición');
 });
 
-test('deshacer retira el último registro', async () => {
+test('deshacer retira el último registro y nunca baja de cero', async () => {
   await reset(false);
-  await store.record('in');
-  await store.record('in');
+  await store.record();
+  await store.record();
   await store.undo();
-  const s = await store.readState();
-  assert.equal(s.occupancy, 1);
-  assert.equal(s.entries, 1);
+  assert.equal((await store.readState()).count, 1);
+
+  await store.undo();
+  await store.undo();                       // de más: no debe romper nada
+  assert.equal((await store.readState()).count, 0);
 });
 
 test('poner a cero limpia el contador', async () => {
   await reset(false);
-  await store.record('in');
-  await store.record('in');
+  await store.record();
+  await store.record();
   const s = await store.resetCounter();
-  assert.deepEqual([s.occupancy, s.entries, s.exits, s.peak], [0, 0, 0, 0]);
+  assert.equal(s.count, 0);
   assert.ok(s.since, 'queda registrado el inicio de jornada');
 });
 
 test('nube: se envía y el servidor manda', async () => {
   await reset(true);
-  await store.record('in');
-  await store.record('in');
+  await store.record();
+  await store.record();
   await store.flush();
   const s = await store.readState();
-  assert.equal(s.occupancy, 2);
+  assert.equal(s.count, 2);
   assert.equal(s.pending, 0);
   assert.equal(s.connection, 'synced');
 });
@@ -119,22 +108,22 @@ test('nube: se envía y el servidor manda', async () => {
 test('sin red: se acumula en la cola y se envía entero al volver', async () => {
   await reset(true);
   serverFails = true;
-  for (const k of ['in', 'in', 'in', 'out']) await store.record(k).catch(() => {});
+  for (let i = 0; i < 4; i++) await store.record().catch(() => {});
   let s = await store.readState();
-  assert.equal(s.occupancy, 2, 'el mostrador sigue correcto sin conexión');
-  assert.ok(s.pending >= 4, 'los eventos quedan pendientes');
+  assert.equal(s.count, 4, 'el mostrador sigue correcto sin conexión');
+  assert.equal(s.pending, 4);
   assert.equal(s.connection, 'error');
 
   serverFails = false;
   s = await store.flush();
   assert.equal(s.pending, 0);
-  assert.equal(s.occupancy, 2, 'el servidor llega al mismo total');
+  assert.equal(s.count, 4, 'el servidor llega al mismo total');
   assert.equal(s.connection, 'synced');
 });
 
 test('reenviar la misma cola no duplica (idempotencia por client_id)', async () => {
   await reset(true);
-  await store.record('in');
+  await store.record();
   const queue = await store.getQueue();
   const config = await store.getConfig();
   // Simula un envío que llega al servidor pero cuya respuesta se pierde.
@@ -142,12 +131,11 @@ test('reenviar la misma cola no duplica (idempotencia por client_id)', async () 
     body: JSON.stringify({ p_code: 'TEST', p_events: queue }),
   });
   const s = await store.flush();
-  assert.equal(s.occupancy, 1, 'un solo registro pese al doble envío');
+  assert.equal(s.count, 1, 'un solo registro pese al doble envío');
 });
 
 test('clics concurrentes no se pisan entre sí', async () => {
   await reset(false);
-  await Promise.all(Array.from({ length: 25 }, () => store.record('in')));
-  const s = await store.readState();
-  assert.equal(s.occupancy, 25, 'no se pierde ningún clic');
+  await Promise.all(Array.from({ length: 25 }, () => store.record()));
+  assert.equal((await store.readState()).count, 25, 'no se pierde ningún clic');
 });

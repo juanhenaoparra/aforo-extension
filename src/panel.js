@@ -8,33 +8,22 @@ const MARKUP = `
   </div>
 
   <div class="score" data-ref="score">
-    <div class="score-label">Personas dentro</div>
-    <div class="score-value" data-ref="occupancy">0</div>
+    <div class="score-label">Personas contadas</div>
+    <div class="score-value" data-ref="count">0</div>
     <div class="score-capacity" data-ref="capacity"></div>
     <div class="gauge" data-ref="gauge"><i data-ref="gaugeFill"></i></div>
   </div>
 
-  <div class="actions">
-    <button class="tally in" data-ref="btnIn" title="Registrar entrada (Alt+Shift+↑)">
-      <span class="sign">+</span><span class="word">Entrada</span>
-    </button>
-    <button class="tally out" data-ref="btnOut" title="Registrar salida (Alt+Shift+↓)">
-      <span class="sign">−</span><span class="word">Salida</span>
-    </button>
-  </div>
-
-  <div class="stats">
-    <div class="stat"><b data-ref="entries">0</b><span>Entradas</span></div>
-    <div class="stat"><b data-ref="exits">0</b><span>Salidas</span></div>
-    <div class="stat"><b data-ref="peak">0</b><span>Pico</span></div>
-  </div>
+  <button class="tally in" data-ref="btnCount" title="Contar una persona (Alt+Shift+\u2191)">
+    <span class="sign">+</span><span class="word">Contar persona</span>
+  </button>
 
   <div class="tools">
-    <button class="tool" data-ref="btnUndo" title="Deshacer el último registro">↶ Deshacer</button>
-    <button class="tool" data-ref="btnFloat" title="Abrir en ventana flotante">⧉ Flotante</button>
-    <button class="tool" data-ref="btnPin" title="Fijar siempre encima" hidden>📌 Encima</button>
-    <button class="tool" data-ref="btnSettings" title="Ajustes">⚙</button>
-    <button class="tool danger" data-ref="btnReset" title="Poner a cero la jornada">⟲</button>
+    <button class="tool" data-ref="btnUndo" title="Deshacer el \u00faltimo registro">\u21b6 Deshacer</button>
+    <button class="tool" data-ref="btnFloat" title="Abrir en ventana flotante">\u29c9 Flotante</button>
+    <button class="tool" data-ref="btnPin" title="Fijar siempre encima" hidden>\ud83d\udccc Encima</button>
+    <button class="tool" data-ref="btnSettings" title="Ajustes">\u2699</button>
+    <button class="tool danger" data-ref="btnReset" title="Poner a cero la jornada">\u27f2</button>
   </div>
 
   <div class="hint" data-ref="hint"></div>
@@ -104,30 +93,27 @@ export function mount(root, opts = {}) {
   function paint(s) {
     state = s;
     soundOn = s.config.soundOn;
-    const cap = s.config.capacity || 0;
-    const full = cap > 0 && s.occupancy >= cap;
+    const goal = s.config.capacity || 0;
+    const reached = goal > 0 && s.count >= goal;
 
     el.venue.textContent = s.config.venueName || 'Aforo';
-    el.occupancy.textContent = s.occupancy;
-    el.entries.textContent = s.entries;
-    el.exits.textContent = s.exits;
-    el.peak.textContent = s.peak;
+    el.count.textContent = s.count;
 
-    el.capacity.textContent = cap ? `de ${cap} · ${Math.round((s.occupancy / cap) * 100)}%` : '';
-    el.score.classList.toggle('full', full);
-    el.gauge.classList.toggle('full', full);
-    el.gauge.hidden = !cap;
-    el.gaugeFill.style.width = cap ? `${Math.min(100, (s.occupancy / cap) * 100)}%` : '0%';
+    el.capacity.textContent = goal ? `de ${goal} · ${Math.round((s.count / goal) * 100)}%` : '';
+    el.score.classList.toggle('full', reached);
+    el.gauge.classList.toggle('full', reached);
+    el.gauge.hidden = !goal;
+    el.gaugeFill.style.width = goal ? `${Math.min(100, (s.count / goal) * 100)}%` : '0%';
 
     el.dot.dataset.state = s.connection;
     const label = STATUS_TEXT[s.connection];
     el.statusText.textContent = typeof label === 'function' ? label(s.pending) : label;
     el.dot.title = s.error || '';
 
-    el.btnUndo.disabled = s.occupancy === 0 && s.entries === 0 && s.exits === 0;
+    el.btnUndo.disabled = s.count === 0;
     el.hint.innerHTML = s.since
       ? `Jornada iniciada ${timeAgo(s.since)}`
-      : '<kbd>Alt</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd> entrada · <kbd>↓</kbd> salida';
+      : '<kbd>Alt</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd> para contar desde cualquier ventana';
   }
 
   async function act(fn, button, freq) {
@@ -142,17 +128,16 @@ export function mount(root, opts = {}) {
 
   const refresh = async () => paint(await store.readState());
 
-  el.btnIn.addEventListener('click', () => act(() => ask('record', { kind: 'in' }), el.btnIn, 880));
-  el.btnOut.addEventListener('click', () => act(() => ask('record', { kind: 'out' }), el.btnOut, 520));
+  el.btnCount.addEventListener('click', () => act(() => ask('record'), el.btnCount, 880));
   el.btnUndo.addEventListener('click', () => act(() => ask('undo'), null, 300));
   el.btnSettings.addEventListener('click', () => chrome.runtime.openOptionsPage());
   el.btnFloat.addEventListener('click', () => opts.onFloat?.());
   el.btnPin.addEventListener('click', () => opts.onPin?.());
   el.btnReset.addEventListener('click', () => {
-    const n = state?.occupancy ?? 0;
+    const n = state?.count ?? 0;
     // La ventana PiP tiene su propio `window`: hay que pedirle a ella el diálogo.
     const view = root.ownerDocument.defaultView ?? window;
-    if (view.confirm(`¿Poner el contador a cero?\n\nAhora mismo hay ${n} persona${n === 1 ? '' : 's'} dentro.`)) {
+    if (view.confirm(`¿Poner el contador a cero?\n\nLlevas ${n} persona${n === 1 ? '' : 's'} contada${n === 1 ? '' : 's'}.`)) {
       act(() => ask('reset'));
     }
   });
@@ -160,9 +145,10 @@ export function mount(root, opts = {}) {
   root.ownerDocument.addEventListener('keydown', (e) => {
     if (e.target.matches('input, textarea')) return;
     const key = e.key;
-    if (key === 'ArrowUp' || key === '+' || key === ' ') { e.preventDefault(); el.btnIn.click(); }
-    else if (key === 'ArrowDown' || key === '-') { e.preventDefault(); el.btnOut.click(); }
-    else if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'z') { e.preventDefault(); el.btnUndo.click(); }
+    if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'z') { e.preventDefault(); el.btnUndo.click(); }
+    else if (key === 'ArrowUp' || key === '+' || key === ' ' || key === 'Enter') {
+      e.preventDefault(); el.btnCount.click();
+    }
   });
 
   const stop = store.onChange(refresh);

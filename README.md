@@ -1,26 +1,28 @@
 # Aforo — contador de personas
 
-Extensión de Chrome (Manifest V3) para contar personas en un local físico: se pulsa
-**entrada** o **salida** y la extensión lleva el aforo actual, las entradas y salidas
-del día y el pico máximo. Pensada para vivir en una **ventana flotante siempre encima**
-del resto de aplicaciones.
+Extensión de Chrome (Manifest V3) para contar personas en un local físico: un solo
+botón grande que se pulsa por cada persona, pensado para vivir en una **ventana
+flotante siempre encima** del resto de aplicaciones.
+
+El contador es acumulativo: mide **cuántas personas han pasado** durante la jornada,
+no cuántas hay dentro en un momento dado.
 
 ## Qué hace
 
-- **Contador manual** con dos botones grandes, pensados para pulsarse con prisa.
+- **Un botón**, grande y con respuesta inmediata (destello y pitido opcional).
 - **Ventana flotante** independiente (`⧉ Flotante`) y modo **siempre encima**
   (`📌 Encima`, vía Document Picture-in-Picture — Chrome 116+).
-- **Atajos globales**, funcionan aunque Chrome esté en segundo plano:
-  `Alt+Shift+↑` entrada · `Alt+Shift+↓` salida · `Alt+Shift+A` abrir la ventana flotante.
-  Dentro del panel: `↑`/`↓`/`espacio` y `Ctrl+Z` para deshacer.
-- **Aforo máximo** opcional: la ficha se pone en rojo al alcanzarlo.
+- **Atajos**: `Alt+Shift+↑` cuenta una persona aunque Chrome esté en segundo plano y
+  `Alt+Shift+A` abre la ventana flotante. Dentro del panel, `↑` / `+` / `espacio` /
+  `Enter` cuentan y `Ctrl+Z` deshace.
+- **Objetivo de personas** opcional: barra de progreso que se pone en rojo al llegar.
 - **Deshacer** el último registro y **poner a cero** la jornada.
 - **Contador en el icono** de la barra de Chrome, siempre a la vista.
 - **Funciona sin conexión**: los clics se guardan en una cola local y se envían solos
   cuando vuelve la red. El mostrador nunca se queda esperando.
 - **Sincronización entre dispositivos** (opcional, con Supabase): varios móviles,
-  tablets u ordenadores con el mismo código de local comparten el mismo contador.
-- **Exportación a CSV** del historial por horas.
+  tablets u ordenadores con el mismo código de local suman al mismo contador.
+- **Exportación a CSV** del histórico de personas por hora.
 
 ## Instalación
 
@@ -30,13 +32,14 @@ del resto de aplicaciones.
 4. `⧉ Flotante` abre la ventana pequeña; dentro de ella, `📌 Encima` la fija sobre
    todas las demás aplicaciones.
 
-Para publicarla o repartirla: `npm run zip`.
+Para repartirla: `npm run zip`.
 
 ## Sincronizar entre dispositivos (opcional)
 
 Sin esto la extensión funciona igual, pero el contador vive sólo en ese navegador.
 
-1. En un proyecto de Supabase, ejecuta `sql/schema.sql` en el **SQL Editor**.
+1. Aplica la migración `supabase/migrations/20260901120000_aforo_init.sql` al proyecto,
+   con `supabase db push` o pegándola en el **SQL Editor**.
 2. Abre los **ajustes** de la extensión (⚙) y rellena:
    - **URL del proyecto** — `https://xxxxxxxx.supabase.co`
    - **Clave publishable / anon** — la de *Project Settings → API Keys*
@@ -49,33 +52,34 @@ y cada minuto en segundo plano.
 
 ### Sobre la seguridad
 
-Las tablas quedan cerradas con RLS y sin políticas: la clave publishable **no** permite
-leer ni escribir directamente. Todo pasa por funciones `SECURITY DEFINER` que exigen el
-código del local, que actúa como secreto compartido. Quien tenga la clave *y* el código
-puede sumar y restar en ese local, así que genera un código largo y aleatorio y no lo
-publiques. Si necesitas garantías más fuertes (cada empleado con su cuenta, auditoría
-por persona), el paso siguiente es Supabase Auth con políticas RLS por usuario.
+Las dos tablas quedan con RLS activo y **sin políticas**, y sin permisos para los roles
+`anon` / `authenticated`: la clave publishable no permite leer ni escribir directamente.
+Todo pasa por funciones `SECURITY DEFINER` que exigen el código del local, que actúa
+como secreto compartido. Quien tenga la clave *y* el código puede sumar en ese local,
+así que genera un código largo y aleatorio y no lo publiques. Si necesitas garantías
+más fuertes (cada empleado con su cuenta, auditoría por persona), el paso siguiente es
+Supabase Auth con políticas RLS por usuario.
 
 ## Estructura
 
 ```
-manifest.json        Manifest V3, permisos y atajos
-src/store.js         Núcleo: configuración, estado, cola offline, RPC a Supabase
-src/panel.js         Interfaz del contador, compartida por popup y ventana flotante
-src/panel.css        Estilos
-src/popup.html/.js   Panel compacto al pulsar el icono
-src/floating.html/.js Ventana flotante + Document Picture-in-Picture
-src/options.html/.js Ajustes, prueba de conexión y exportación CSV
-src/background.js    Service worker: atajos, ventana flotante, sincronización
-sql/schema.sql       Tablas y funciones de Supabase
-test/store.test.mjs  Pruebas del núcleo (`npm test`)
+manifest.json           Manifest V3, permisos y atajos
+src/store.js            Núcleo: configuración, estado, cola offline, RPC a Supabase
+src/panel.js            Interfaz del contador, compartida por popup y ventana flotante
+src/panel.css           Estilos
+src/popup.html/.js      Panel compacto al pulsar el icono
+src/floating.html/.js   Ventana flotante + Document Picture-in-Picture
+src/options.html/.js    Ajustes, prueba de conexión y exportación CSV
+src/background.js       Service worker: atajos, ventana flotante, sincronización
+supabase/migrations/    Migración con tablas, RLS y funciones
+test/store.test.mjs     Pruebas del núcleo (`npm test`)
 ```
 
 ### Cómo se mantiene el contador correcto
 
-`base` es el último estado confirmado por el servidor y `queue` son los clics que aún
-no ha confirmado; lo que se muestra es siempre `base + queue`. Por eso el número reacciona
-al instante aunque no haya red, y por eso reenviar la cola no duplica nada: cada evento
+`base` es el último total confirmado por el servidor y `queue` son los clics que aún no
+ha confirmado; lo que se muestra es siempre `base + queue`. Por eso el número reacciona
+al instante aunque no haya red, y por eso reenviar la cola no duplica nada: cada registro
 lleva un `client_id` único y el servidor ignora los repetidos. Sin nube configurada, la
 propia cola hace de libro mayor de la jornada.
 
